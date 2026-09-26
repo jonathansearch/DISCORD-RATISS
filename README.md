@@ -48,11 +48,38 @@ Sans webhook dans l'environnement, il lit `~/.ratiss-webhook` (une ligne, `chmod
 
 ---
 
+## Le point d'entrée : `agent.py` 🤖
+
+Le workflow `agent.yml` cherche `./agent`, `agent.py` ou `agent.js`. **C'est `agent.py`.**
+Il est autonome (aucun import voisin : un point d'entrée de CI doit démarrer même si le reste manque).
+
+```bash
+python3 agent.py                                   # RAPPORT : clone RATISS-ARCHIVES, vérifie les empreintes, poste le verdict
+python3 agent.py --test                            # message de connexion
+python3 agent.py --statut OK --titre "…" --details "…" --lien "…"
+python3 agent.py … --dry-run                       # n'envoie rien, affiche le JSON
+```
+
+**Ce qu'il sait diagnostiquer tout seul — sans jamais afficher le secret :**
+
+| Situation | Ce que l'agent répond |
+|---|---|
+| Secret vide | `✘ Le secret RATISS est vide ou absent` + où le mettre |
+| Secret = token GitHub (erreur classique) | `✘ n'est pas une URL de webhook Discord` + début de la valeur masquée + où trouver le webhook |
+| Webhook supprimé / révoqué | `HTTP 404 — Unknown Webhook` + « recrée-le et mets RATISS à jour » |
+| Tout est bon | ✅ message posté dans le salon |
+
+**Testé en réel :** rapport complet depuis le dépôt en ligne (**42/42 empreintes** au moment du test — l'état publié), plus les 5 chemins d'erreur.
+
+---
+
 ## Fichiers
 
 | Fichier | Rôle |
 |---|---|
-| `.github/workflows/notifier.yml` | le hub : manuel + quotidien + appelable |
+| `agent.py` | **le point d'entrée appelé par `agent.yml`** |
+| `.github/workflows/agent.yml` | celui du chef : bouton manuel + contrôle du secret |
+| `.github/workflows/notifier.yml` | le hub : manuel + quotidien 08:00 UTC + appelable |
 | `outils/notifier_discord.py` | envoie un embed ✅/❌/🔵 — bibliothèque standard seule, zéro dépendance |
 | `outils/verifier_manifeste.py` | vérifie les empreintes SHA-256 d'un `MANIFESTE.json` |
 
