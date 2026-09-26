@@ -5,8 +5,10 @@
 Point d'entrée appelé par .github/workflows/agent.yml. Volontairement AUTONOME :
 un point d'entrée de CI ne doit dépendre d'aucun fichier voisin pour démarrer.
 
-Le secret arrive par la variable d'environnement `RATISS` (jamais en argument,
-jamais écrit sur disque, jamais affiché).
+Le secret arrive par variable d'environnement — jamais en argument, jamais écrit
+sur disque, jamais affiché. Deux noms acceptés, dans cet ordre :
+  1. `DISCORD_WEBHOOK_URL`   (nom explicite, posé par agent.yml)
+  2. `RATISS`                (nom historique, conservé pour compatibilité)
 
 Trois usages :
 
@@ -40,18 +42,27 @@ PREFIXES_WEBHOOK = ("https://discord.com/api/webhooks/", "https://discordapp.com
 
 # ───────────────────────────── 1. le secret ─────────────────────────────
 
+NOMS_SECRET = ("DISCORD_WEBHOOK_URL", "RATISS")
+
+
 def lire_secret() -> str:
-    valeur = os.environ.get("RATISS", "").strip()
+    for nom in NOMS_SECRET:
+        valeur = os.environ.get(nom, "").strip()
+        if valeur:
+            break
+    else:
+        valeur = ""
     if not valeur:
         sys.exit(
-            "✘ Le secret RATISS est vide ou absent.\n"
+            "✘ Aucun webhook trouvé.\n"
+            f"  variables cherchées : {' puis '.join(NOMS_SECRET)}\n"
             "  GitHub → Settings → Secrets and variables → Actions → RATISS"
         )
     if not valeur.startswith(PREFIXES_WEBHOOK):
         # cas probable : on a mis un token GitHub là où il faut un webhook Discord
         debut = valeur.split("/")[2] if "//" in valeur else valeur[:12]
         sys.exit(
-            "✘ Le secret RATISS n'est pas une URL de webhook Discord.\n"
+            f"✘ Le secret ({' / '.join(NOMS_SECRET)}) n'est pas une URL de webhook Discord.\n"
             f"  valeur vue : {debut}… (le reste est masqué)\n"
             "  attendu : https://discord.com/api/webhooks/<id>/<jeton>\n"
             "  Où le trouver : Discord → clic droit sur le salon → Modifier le salon →\n"
@@ -176,13 +187,13 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true", help="n'envoie rien")
     a = p.parse_args()
 
-    webhook = "https://discord.com/api/webhooks/0/0" if a.dry_run and not os.environ.get("RATISS") \
-        else lire_secret()
+    webhook = "https://discord.com/api/webhooks/0/0" if a.dry_run and not any(
+        os.environ.get(n, "").strip() for n in NOMS_SECRET) else lire_secret()
 
     if a.test:
         return envoyer(webhook, construire(
             "OK", "Test de connexion",
-            "Le secret RATISS est bien un webhook Discord, et l'agent du hub sait écrire ici. 🧪\n"
+            "Le webhook est bien reconnu, et l'agent du hub sait écrire ici. 🧪\n"
             "Prochaines étapes : bouton « Run workflow » → rapport des empreintes de RATISS-ARCHIVES.",
             None), a.dry_run)
 

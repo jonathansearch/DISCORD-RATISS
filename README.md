@@ -52,6 +52,7 @@ Sans webhook dans l'environnement, il lit `~/.ratiss-webhook` (une ligne, `chmod
 
 Le workflow `agent.yml` cherche `./agent`, `agent.py` ou `agent.js`. **C'est `agent.py`.**
 Il est autonome (aucun import voisin : un point d'entrée de CI doit démarrer même si le reste manque).
+Il lit le webhook sous **deux noms, dans cet ordre** : `DISCORD_WEBHOOK_URL` puis `RATISS` (compatibilité).
 
 ```bash
 python3 agent.py                                   # RAPPORT : clone RATISS-ARCHIVES, vérifie les empreintes, poste le verdict
@@ -66,10 +67,14 @@ python3 agent.py … --dry-run                       # n'envoie rien, affiche le
 |---|---|
 | Secret vide | `✘ Le secret RATISS est vide ou absent` + où le mettre |
 | Secret = token GitHub (erreur classique) | `✘ n'est pas une URL de webhook Discord` + début de la valeur masquée + où trouver le webhook |
+| Aucune des deux variables | `✘ Aucun webhook trouvé` + les deux noms cherchés |
 | Webhook supprimé / révoqué | `HTTP 404 — Unknown Webhook` + « recrée-le et mets RATISS à jour » |
 | Tout est bon | ✅ message posté dans le salon |
 
-**Testé en réel :** rapport complet depuis le dépôt en ligne (**42/42 empreintes** au moment du test — l'état publié), plus les 5 chemins d'erreur.
+**Testé en réel :** rapport complet depuis le dépôt en ligne (**42/42 empreintes** au moment du test — l'état publié), plus les 6 chemins d'erreur.
+
+> 📌 **Un webhook = un salon.** Discord lie le webhook au salon où il a été créé.
+> Pour poster ailleurs, créer un second webhook et un second secret (`RATISS_SIMULATIONS`, etc.).
 
 ---
 
