@@ -1,3 +1,45 @@
+# 📤 À DONNER À L'AUTRE AGENT — intégration du point d'entrée
+
+**Réponse courte : le point d'entrée est `agent.py` (Python). Aucune modification de `agent.yml` n'est nécessaire** — il suffit de déposer le fichier à la racine du dépôt.
+
+---
+
+## 1. Le contrat (ce que l'agent attend)
+
+| Élément | Valeur |
+|---|---|
+| Chemin | `agent.py` — **racine du dépôt**, nom exact |
+| Langage | Python 3 (testé sur 3.13 ; compatible 3.10+) |
+| Dépendances | **aucune** — bibliothèque standard uniquement (`urllib`, `json`, `hashlib`, `subprocess`) |
+| Appel | `python3 ./agent.py` — **sans argument** |
+| Ce qu'il fait par défaut | clone `RATISS-ARCHIVES`, vérifie les empreintes SHA-256 de son `MANIFESTE.json`, poste le verdict dans Discord |
+| Durée | ~2 secondes (le clone est en `--depth 1`) — le `timeout-minutes: 15` est très large |
+| Code de sortie | `0` = message envoyé · `1` = problème (secret, réseau, envoi) |
+| Droits GitHub nécessaires | **`contents: read` suffit** — il n'écrit jamais dans le dépôt, il ne fait que du HTTPS sortant vers Discord |
+
+**Variables d'environnement lues, dans cet ordre :**
+1. `DISCORD_WEBHOOK_URL` ← déjà posée par `agent.yml` ✅
+2. `RATISS` ← repli, conservé pour compatibilité ✅
+
+→ **Le `agent.yml` actuel fonctionne tel quel.** Rien à changer.
+
+---
+
+## 2. Sécurité (à conserver tel quel)
+
+- la valeur du webhook **n'est jamais imprimée** ; en cas d'erreur, seuls les 12 premiers caractères sont montrés (`ghp_3dCnAbCd…`) pour diagnostiquer
+- le webhook **n'est jamais écrit sur disque**
+- `allowed_mentions: {"parse": []}` → le message **ne peut pas** mentionner `@everyone`, `@here` ni un rôle
+- aucune permission d'écriture demandée : `contents: read` est le bon réglage, ne pas l'élargir
+- si le webhook est révoqué : `HTTP 404 — Unknown Webhook` → message clair « recrée-le et mets RATISS à jour »
+
+---
+
+## 3. Le fichier à ajouter — `agent.py`
+
+208 lignes, 8153 caractères. **Copier-coller tel quel, ne rien modifier.**
+
+```python
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """RATISS LABS — agent du hub Discord.
@@ -206,3 +248,45 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+```
+
+---
+
+## 4. Vérifications possibles SANS le secret
+
+```bash
+python3 agent.py --dry-run                     # rapport complet, affiche le JSON, n'envoie rien
+python3 agent.py --test --dry-run              # message de connexion, sans envoi
+python3 agent.py --statut ECHEC --titre "test" --details "essai" --dry-run
+```
+
+Le mode `--dry-run` n'exige aucun secret : idéal pour valider l'intégration depuis le runner avant de toucher à `RATISS`.
+
+**Sortie attendue d'un vrai run (journal du workflow) :**
+```
+Verify Discord webhook is configured → Discord webhook is configured (URL hidden).
+Run agent                            → [rapport] OK — 42/42 empreintes conformes
+                                       ✅ message envoyé (HTTP 204)
+```
+
+*(42 = l'état actuellement publié de `RATISS-ARCHIVES` ; ce sera 55 après la prochaine poussée de ce dépôt.)*
+
+---
+
+## 5. Optionnel — le reste du hub (à faire plus tard, pas maintenant)
+
+Deux fichiers supplémentaires existent côté laboratoire, **non requis** pour que `agent.py` tourne :
+
+- `.github/workflows/notifier.yml` — ajoute une vérification **quotidienne à 08:00 UTC** des mêmes empreintes (en plus du déclenchement manuel)
+- `outils/notifier_discord.py` + `outils/verifier_manifeste.py` — briques réutilisables
+
+⚠️ **Ne pas pousser ces fichiers par-dessus en écrasant l'existant** : `agent.yml` a été écrit ici et doit être conservé. Toute poussée doit d'abord récupérer la branche distante, sinon `agent.yml` disparaît.
+
+---
+
+## 6. Après l'ajout — 2 clics
+
+1. **Actions** → *Run agent with RATISS secret* → **Run workflow**
+2. Le message arrive dans le salon Discord lié au webhook. 🛰️
+
+> 📌 Un webhook Discord est lié à **un seul salon** — celui où il a été créé. Pour poster ailleurs, créer un second webhook et un second secret.
