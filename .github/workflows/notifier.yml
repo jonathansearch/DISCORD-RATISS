@@ -41,8 +41,9 @@ permissions:
   contents: read
 
 env:
-  # accepte les deux noms de secret : RATISS d'abord, DISCORD_WEBHOOK ensuite
-  WEBHOOK: ${{ secrets.RATISS != '' && secrets.RATISS || secrets.DISCORD_WEBHOOK }}
+  # accepte les deux noms de secret : RATISS d'abord, DISCORD_WEBHOOK ensuite.
+  # le nom DÉFINI ICI est celui que lit outils/notifier_discord.py
+  DISCORD_WEBHOOK: ${{ secrets.RATISS != '' && secrets.RATISS || secrets.DISCORD_WEBHOOK }}
 
 jobs:
   notifier:
@@ -104,11 +105,11 @@ jobs:
       - name: Contrôle du secret
         if: always()
         run: |
-          if [ -z "${WEBHOOK}" ]; then
+          if [ -z "${DISCORD_WEBHOOK}" ]; then
             echo "::error title=Secret absent::Aucun secret RATISS ni DISCORD_WEBHOOK dans ce dépôt."
             exit 1
           fi
-          case "${WEBHOOK}" in
+          case "${DISCORD_WEBHOOK}" in
             https://discord.com/api/webhooks/*|https://discordapp.com/api/webhooks/*)
               echo "✅ le secret ressemble bien à un webhook Discord" ;;
             *)
