@@ -1,0 +1,45 @@
+name: Run agent with RATISS secret
+
+on:
+  workflow_dispatch:
+
+# Least privilege: the job only needs to read the repository.
+permissions:
+  contents: read
+
+jobs:
+  agent:
+    name: Run agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The secret is available only to this job's process environment.
+      RATISS: ${{ secrets.RATISS }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify RATISS is configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RATISS:-}" ]]; then
+            echo "The RATISS repository secret is not configured or is empty."
+            exit 1
+          fi
+          echo "RATISS is available to the agent (value hidden)."
+
+      - name: Run agent
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -x ./agent ]]; then
+            ./agent
+          elif [[ -f ./agent.py ]]; then
+            python3 ./agent.py
+          elif [[ -f ./agent.js ]]; then
+            node ./agent.js
+          else
+            echo "No agent entrypoint found. Add an executable ./agent, agent.py, or agent.js."
+            exit 1
+          fi
