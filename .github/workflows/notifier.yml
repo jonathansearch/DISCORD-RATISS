@@ -1,0 +1,116 @@
+# 🛰️ HUB DE NOTIFICATION RATISS LABS
+# Ce dépôt ne sert qu'à une chose : envoyer les résultats du labo dans Discord.
+#
+# Déclencheurs :
+#   • manuel  : onglet Actions -> « Notification RATISS » -> Run workflow
+#   • horaire  : tous les jours à 08:00 UTC (vérification des empreintes)
+#   • appelable: par les autres dépôts via workflow_dispatch / repository_dispatch
+#
+# Le webhook vit dans un SECRET. Deux noms acceptés, dans cet ordre :
+#   1) RATISS               (celui déjà créé par le chef)
+#   2) DISCORD_WEBHOOK      (nom standard, utilisé par les autres dépôts)
+# Aucune clé dans ce fichier. Jamais.
+
+name: Notification RATISS
+
+on:
+  workflow_dispatch:
+    inputs:
+      statut:
+        description: "OK | ECHEC | INFO"
+        required: false
+        default: "INFO"
+      titre:
+        description: "Titre du message"
+        required: false
+        default: "Message manuel du labo"
+      details:
+        description: "Détail (chiffres, limites, contexte)"
+        required: false
+        default: ""
+      lien:
+        description: "Lien (dépôt, run, page)"
+        required: false
+        default: ""
+  repository_dispatch:
+    types: [ratiss-ok, ratiss-echec]
+  schedule:
+    - cron: "0 8 * * *"   # tous les jours 08:00 UTC — vérification des empreintes
+
+permissions:
+  contents: read
+
+env:
+  # accepte les deux noms de secret : RATISS d'abord, DISCORD_WEBHOOK ensuite
+  WEBHOOK: ${{ secrets.RATISS != '' && secrets.RATISS || secrets.DISCORD_WEBHOOK }}
+
+jobs:
+  notifier:
+    name: Envoyer dans Discord
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # ---------- 1. message manuel / appelé par un autre dépôt ----------
+      - name: Message manuel
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
+        run: |
+          python3 outils/notifier_discord.py \
+            --statut "${{ github.event.inputs.statut || (github.event.action == 'ratiss-ok' && 'OK' || 'ECHEC') }}" \
+            --titre  "${{ github.event.inputs.titre || github.event.client_payload.titre || 'RATISS LABS' }}" \
+            --details "${{ github.event.inputs.details || github.event.client_payload.details || '' }}" \
+            --lien   "${{ github.event.inputs.lien || github.event.client_payload.lien || '' }}"
+
+      # ---------- 2. vérification quotidienne des archives ----------
+      - name: Vérification quotidienne des empreintes (RATISS-ARCHIVES)
+        id: quo
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        run: |
+          git clone --depth 1 "https://github.com/${{ github.repository_owner }}/RATISS-ARCHIVES" /tmp/archives
+          cd /tmp/archives
+          set -o pipefail
+          python3 "$GITHUB_WORKSPACE/outils/verifier_manifeste.py" --json | tee /tmp/resultat.json
+
+      - name: Message quotidien
+        if: github.event_name == 'schedule'
+        run: |
+          python3 - <<'PY' > /tmp/message.txt
+          import json, pathlib
+          try:
+              d = json.loads(pathlib.Path("/tmp/resultat.json").read_text().strip().splitlines()[-1])
+              if d["problemes"]:
+                  print("ECHEC")
+                  print(f"{d['problemes']} empreinte(s) non conforme(s)")
+                  print(" · ".join(d["detail"][:8]))
+              else:
+                  print("OK")
+                  print(f"{d['conformes']}/{d['conformes']} empreintes conformes")
+                  print("Vérification quotidienne automatique · RATISS-ARCHIVES")
+          except Exception as e:
+              print("ECHEC"); print("Vérification impossible"); print(f"{type(e).__name__}: {e}")
+          PY
+          python3 outils/notifier_discord.py \
+            --statut  "$(sed -n 1p /tmp/message.txt)" \
+            --titre   "$(sed -n 2p /tmp/message.txt)" \
+            --details "$(sed -n 3p /tmp/message.txt)" \
+            --lien    "${{ github.server_url }}/${{ github.repository }}/actions"
+
+      # ---------- 3. diagnostic si le secret n'est pas un webhook ----------
+      - name: Contrôle du secret
+        if: always()
+        run: |
+          if [ -z "${WEBHOOK}" ]; then
+            echo "::error title=Secret absent::Aucun secret RATISS ni DISCORD_WEBHOOK dans ce dépôt."
+            exit 1
+          fi
+          case "${WEBHOOK}" in
+            https://discord.com/api/webhooks/*|https://discordapp.com/api/webhooks/*)
+              echo "✅ le secret ressemble bien à un webhook Discord" ;;
+            *)
+              echo "::error title=Secret invalide::Le secret ne commence pas par https://discord.com/api/webhooks/ — ce n'est pas une URL de webhook Discord." ;;
+          esac
