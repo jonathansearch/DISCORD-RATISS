@@ -1,9 +1,9 @@
-name: Run agent with RATISS secret
+name: Run agent with Discord webhook
 
 on:
   workflow_dispatch:
 
-# Least privilege: the job only needs to read the repository.
+# A Discord webhook only needs outbound HTTPS. No GitHub write permissions are required.
 permissions:
   contents: read
 
@@ -13,21 +13,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # The secret is available only to this job's process environment.
+      # RATISS remains available for compatibility with the existing agent.
       RATISS: ${{ secrets.RATISS }}
+      # Preferred, explicit name for a Discord webhook URL.
+      DISCORD_WEBHOOK_URL: ${{ secrets.RATISS }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Verify RATISS is configured
+      - name: Verify Discord webhook is configured
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${RATISS:-}" ]]; then
+          if [[ -z "${DISCORD_WEBHOOK_URL:-}" ]]; then
             echo "The RATISS repository secret is not configured or is empty."
             exit 1
           fi
-          echo "RATISS is available to the agent (value hidden)."
+          case "$DISCORD_WEBHOOK_URL" in
+            https://discord.com/api/webhooks/*|https://discordapp.com/api/webhooks/*)
+              echo "Discord webhook is configured (URL hidden)."
+              ;;
+            *)
+              echo "RATISS is not a recognized Discord webhook URL."
+              exit 1
+              ;;
+          esac
 
       - name: Run agent
         shell: bash
