@@ -80,11 +80,45 @@ python3 agent.py … --dry-run                       # n'envoie rien, affiche le
 
 ## Fichiers
 
+## Hub central multi-salons
+
+Le workflow **Hub central Discord** permet de piloter plusieurs salons depuis un seul
+workflow. Il ne faut pas créer un workflow par clé. Le routage est conservé dans un seul
+secret GitHub nommé **`DISCORD_WEBHOOKS_JSON`**.
+
+Le contenu du secret est un objet JSON dont les clés sont des noms logiques choisis par
+toi et les valeurs sont les URL des webhooks Discord :
+
+```json
+{
+  "general": "https://discord.com/api/webhooks/ID/TOKEN",
+  "alertes": "https://discord.com/api/webhooks/ID/TOKEN",
+  "tests": "https://discord.com/api/webhooks/ID/TOKEN"
+}
+```
+
+Les URL ci-dessus sont uniquement un modèle : les vraies URL doivent être enregistrées
+dans **Settings → Secrets and variables → Actions → New repository secret**. Elles ne
+doivent jamais être placées dans un fichier suivi par Git.
+
+Ensuite : **Actions → Hub central Discord → Run workflow**, puis renseigne le nom logique
+du salon, par exemple `alertes`. Le workflow accepte aussi un statut, un titre, des
+détails, un lien et un mode de test. Le script utilise `allowed_mentions: {parse: []}` :
+les messages ne peuvent donc pas déclencher de mention globale ou de mention de rôle.
+
+Le nom du salon est un alias interne ; Discord détermine le salon réel à partir du
+webhook associé. Pour changer de salon, il suffit de sélectionner un autre alias.
+
+---
+
+## Fichiers
+
 | Fichier | Rôle |
 |---|---|
 | `agent.py` | **le point d'entrée appelé par `agent.yml`** |
 | `.github/workflows/agent.yml` | celui du chef : bouton manuel + contrôle du secret |
 | `.github/workflows/notifier.yml` | le hub : manuel + quotidien 08:00 UTC + appelable |
+| `.github/workflows/hub-central.yml` | hub central : choix d’un salon et envoi sécurisé |
 | `outils/notifier_discord.py` | envoie un embed ✅/❌/🔵 — bibliothèque standard seule, zéro dépendance |
 | `outils/verifier_manifeste.py` | vérifie les empreintes SHA-256 d'un `MANIFESTE.json` |
 

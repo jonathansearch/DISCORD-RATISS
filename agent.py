@@ -10,11 +10,12 @@ sur disque, jamais affiché. Deux noms acceptés, dans cet ordre :
   1. `DISCORD_WEBHOOK_URL`   (nom explicite, posé par agent.yml)
   2. `RATISS`                (nom historique, conservé pour compatibilité)
 
-Trois usages :
+Quatre usages :
 
   python3 agent.py                 # RAPPORT : vérifie RATISS-ARCHIVES et poste le verdict
   python3 agent.py --test          # message de connexion
   python3 agent.py --titre "…" --details "…" --statut OK --lien "…"
+  python3 agent.py --salon general --titre "…" # choisit le webhook du salon
   python3 agent.py … --dry-run     # n'envoie rien, affiche le JSON
 
 Codes de sortie : 0 = message envoyé · 1 = problème (secret, réseau, envoi)
@@ -43,6 +44,36 @@ PREFIXES_WEBHOOK = ("https://discord.com/api/webhooks/", "https://discordapp.com
 # ───────────────────────────── 1. le secret ─────────────────────────────
 
 NOMS_SECRET = ("DISCORD_WEBHOOK_URL", "RATISS")
+SECRET_MULTI_SALONS = "DISCORD_WEBHOOKS_JSON"
+
+
+def valider_webhook(valeur: str, origine: str) -> str:
+    """Valide un webhook sans jamais afficher sa valeur complète."""
+    valeur = valeur.strip()
+    if not valeur.startswith(PREFIXES_WEBHOOK):
+        sys.exit(
+            f"✘ Le webhook associé à « {origine} » n'est pas une URL Discord valide.\n"
+            "  attendu : https://discord.com/api/webhooks/<id>/<jeton>"
+        )
+    return valeur
+
+
+def lire_webhook_salon(salon: str | None) -> str:
+    """Lit le routage multi-salons, avec repli sur l'ancien secret unique."""
+    multi = os.environ.get(SECRET_MULTI_SALONS, "").strip()
+    if salon and multi:
+        try:
+            routes = json.loads(multi)
+        except json.JSONDecodeError:
+            sys.exit(f"✘ {SECRET_MULTI_SALONS} n'est pas un JSON valide.")
+        if not isinstance(routes, dict):
+            sys.exit(f"✘ {SECRET_MULTI_SALONS} doit être un objet JSON nom → webhook.")
+        valeur = routes.get(salon)
+        if not isinstance(valeur, str) or not valeur.strip():
+            disponibles = ", ".join(sorted(str(k) for k in routes)[:20]) or "aucun"
+            sys.exit(f"✘ Salon inconnu : « {salon} ». Salons configurés : {disponibles}")
+        return valider_webhook(valeur, salon)
+    return lire_secret()
 
 
 def lire_secret() -> str:
@@ -184,11 +215,16 @@ def main() -> int:
     p.add_argument("--details", default=None)
     p.add_argument("--statut", default=None, help="OK | ECHEC | INFO")
     p.add_argument("--lien", default=None)
+    p.add_argument("--salon", default=None, help="clé logique du salon dans DISCORD_WEBHOOKS_JSON")
     p.add_argument("--dry-run", action="store_true", help="n'envoie rien")
     a = p.parse_args()
 
-    webhook = "https://discord.com/api/webhooks/0/0" if a.dry_run and not any(
-        os.environ.get(n, "").strip() for n in NOMS_SECRET) else lire_secret()
+    webhook = (
+        "https://discord.com/api/webhooks/0/0"
+        if a.dry_run and not (a.salon and os.environ.get(SECRET_MULTI_SALONS, "").strip())
+        and not any(os.environ.get(n, "").strip() for n in NOMS_SECRET)
+        else lire_webhook_salon(a.salon)
+    )
 
     if a.test:
         return envoyer(webhook, construire(
