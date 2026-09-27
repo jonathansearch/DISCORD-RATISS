@@ -102,7 +102,8 @@ dans **Settings → Secrets and variables → Actions → New repository secret*
 doivent jamais être placées dans un fichier suivi par Git.
 
 Ensuite : **Actions → Hub central Discord → Run workflow**, puis renseigne le nom logique
-du salon, par exemple `alertes`. Le workflow accepte aussi un statut, un titre, des
+du salon, par exemple `alertes`. Pour envoyer un test à tous les webhooks configurés,
+utilise le nom spécial **`all`**. Le workflow accepte aussi un statut, un titre, des
 détails, un lien et un mode de test. Le script utilise `allowed_mentions: {parse: []}` :
 les messages ne peuvent donc pas déclencher de mention globale ou de mention de rôle.
 

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       salon:
-        description: "Nom logique du salon configuré dans DISCORD_WEBHOOKS_JSON"
+        description: "Nom logique du salon, ou all pour tous les webhooks"
         required: true
         type: string
       statut:
@@ -72,15 +72,16 @@ jobs:
               print("::error::DISCORD_WEBHOOKS_JSON doit contenir au moins un salon.")
               sys.exit(1)
           salon = os.environ["SALON"]
-          if salon not in routes:
+          if salon != "all" and salon not in routes:
               print("::error::Salon non configuré : " + salon)
               print("Salons disponibles : " + ", ".join(sorted(routes)))
               sys.exit(1)
-          webhook = routes[salon]
-          if not isinstance(webhook, str) or not webhook.startswith(("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")):
-              print("::error::Le webhook du salon sélectionné n'est pas une URL Discord valide.")
-              sys.exit(1)
-          print("Configuration valide pour le salon : " + salon)
+          selected = routes.values() if salon == "all" else [routes[salon]]
+          for webhook in selected:
+              if not isinstance(webhook, str) or not webhook.startswith(("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")):
+                  print("::error::Un webhook configuré n'est pas une URL Discord valide.")
+                  sys.exit(1)
+          print("Configuration valide pour : " + ("tous les salons" if salon == "all" else salon))
           PY
 
       - name: Test de connexion

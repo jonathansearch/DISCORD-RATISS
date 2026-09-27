@@ -58,7 +58,7 @@ def valider_webhook(valeur: str, origine: str) -> str:
     return valeur
 
 
-def lire_webhook_salon(salon: str | None) -> str:
+def lire_webhooks(salon: str | None) -> list[str]:
     """Lit le routage multi-salons, avec repli sur l'ancien secret unique."""
     multi = os.environ.get(SECRET_MULTI_SALONS, "").strip()
     if salon and multi:
@@ -68,12 +68,12 @@ def lire_webhook_salon(salon: str | None) -> str:
             sys.exit(f"✘ {SECRET_MULTI_SALONS} n'est pas un JSON valide.")
         if not isinstance(routes, dict):
             sys.exit(f"✘ {SECRET_MULTI_SALONS} doit être un objet JSON nom → webhook.")
-        valeur = routes.get(salon)
-        if not isinstance(valeur, str) or not valeur.strip():
+        valeurs = list(routes.values()) if salon == "all" else [routes.get(salon)]
+        if not valeurs or any(not isinstance(v, str) or not v.strip() for v in valeurs):
             disponibles = ", ".join(sorted(str(k) for k in routes)[:20]) or "aucun"
             sys.exit(f"✘ Salon inconnu : « {salon} ». Salons configurés : {disponibles}")
-        return valider_webhook(valeur, salon)
-    return lire_secret()
+        return [valider_webhook(v, salon) for v in valeurs]
+    return [lire_secret()]
 
 
 def lire_secret() -> str:
@@ -143,6 +143,12 @@ def envoyer(webhook: str, charge: dict, dry_run: bool = False) -> int:
     except Exception as e:
         print(f"✘ envoi impossible : {type(e).__name__} {e}")
         return 1
+
+
+def envoyer_a_tous(webhooks: list[str], charge: dict, dry_run: bool = False) -> int:
+    """Envoie le même message à chaque webhook configuré."""
+    codes = [envoyer(webhook, charge, dry_run) for webhook in webhooks]
+    return 0 if all(code == 0 for code in codes) else 1
 
 
 # ───────────────────────── 3. le rapport (le vrai travail) ─────────────────────────
@@ -219,22 +225,22 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true", help="n'envoie rien")
     a = p.parse_args()
 
-    webhook = (
-        "https://discord.com/api/webhooks/0/0"
+    webhooks = (
+        ["https://discord.com/api/webhooks/0/0"]
         if a.dry_run and not (a.salon and os.environ.get(SECRET_MULTI_SALONS, "").strip())
         and not any(os.environ.get(n, "").strip() for n in NOMS_SECRET)
-        else lire_webhook_salon(a.salon)
+        else lire_webhooks(a.salon)
     )
 
     if a.test:
-        return envoyer(webhook, construire(
+        return envoyer_a_tous(webhooks, construire(
             "OK", "Test de connexion",
             "Le webhook est bien reconnu, et l'agent du hub sait écrire ici. 🧪\n"
             "Prochaines étapes : bouton « Run workflow » → rapport des empreintes de RATISS-ARCHIVES.",
             None), a.dry_run)
 
     if a.titre:  # message manuel, entièrement piloté depuis le bouton
-        return envoyer(webhook, construire(
+        return envoyer_a_tous(webhooks, construire(
             a.statut or "INFO", a.titre, a.details or "", a.lien), a.dry_run)
 
     return rapport(a.dry_run, webhook)   # défaut : le rapport d'empreintes
