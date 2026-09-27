@@ -1,0 +1,86 @@
+name: Purge des messages RATISS du jour
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Date locale Africa/Douala (YYYY-MM-DD), vide = aujourd'hui"
+        required: false
+        default: ""
+        type: string
+      mode:
+        description: "APERÇU ne supprime rien ; SUPPRIMER effectue la suppression"
+        required: true
+        default: "APERÇU"
+        type: choice
+        options:
+          - APERÇU
+          - SUPPRIMER
+      confirmation:
+        description: "Écrire SUPPRIMER_AUJOURDHUI pour autoriser la suppression"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  purge:
+    name: Purger uniquement les messages des webhooks RATISS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      RATISS: ${{ secrets.RATISS }}
+      RATISS2: ${{ secrets.RATISS2 }}
+      RATISS3: ${{ secrets.RATISS3 }}
+      RATISS4: ${{ secrets.RATISS4 }}
+      RATISS5: ${{ secrets.RATISS5 }}
+      RATISS6: ${{ secrets.RATISS6 }}
+      RATISS7: ${{ secrets.RATISS7 }}
+      RATISS8: ${{ secrets.RATISS8 }}
+      RATISS9: ${{ secrets.RATISS9 }}
+      RATISS10: ${{ secrets.RATISS10 }}
+      RATISS11: ${{ secrets.RATISS11 }}
+      RATISS12: ${{ secrets.RATISS12 }}
+      RATISS13: ${{ secrets.RATISS13 }}
+      RATISS14: ${{ secrets.RATISS14 }}
+      RATISS15: ${{ secrets.RATISS15 }}
+      RATISS16: ${{ secrets.RATISS16 }}
+      RATISS17: ${{ secrets.RATISS17 }}
+      RATISS18: ${{ secrets.RATISS18 }}
+      RATISS19: ${{ secrets.RATISS19 }}
+      RATISS20: ${{ secrets.RATISS20 }}
+      RATISS21: ${{ secrets.RATISS21 }}
+      RATISS22: ${{ secrets.RATISS22 }}
+      RATISS23: ${{ secrets.RATISS23 }}
+      PURGE_DATE: ${{ inputs.date }}
+      PURGE_MODE: ${{ inputs.mode }}
+      PURGE_CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Vérifier les autorisations de purge
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DISCORD_BOT_TOKEN:-}" ]]; then
+            echo "::error::Le secret DISCORD_BOT_TOKEN est absent."
+            exit 1
+          fi
+          if [[ "$PURGE_MODE" == "SUPPRIMER" && "$PURGE_CONFIRMATION" != "SUPPRIMER_AUJOURDHUI" ]]; then
+            echo "::error::Confirmation manquante : écris exactement SUPPRIMER_AUJOURDHUI."
+            exit 1
+          fi
+          echo "Bot configuré. Les messages ordinaires des utilisateurs seront ignorés."
+
+      - name: Aperçu ou suppression ciblée
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          [[ -n "$PURGE_DATE" ]] && args+=(--date "$PURGE_DATE")
+          [[ "$PURGE_MODE" == "SUPPRIMER" ]] && args+=(--execute)
+          python3 outils/purge_messages_ratiss.py "${args[@]}"
