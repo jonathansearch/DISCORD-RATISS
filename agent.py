@@ -45,6 +45,7 @@ PREFIXES_WEBHOOK = ("https://discord.com/api/webhooks/", "https://discordapp.com
 
 NOMS_SECRET = ("DISCORD_WEBHOOK_URL", "RATISS")
 SECRET_MULTI_SALONS = "DISCORD_WEBHOOKS_JSON"
+SECRETS_SERIE = ("RATISS",) + tuple(f"RATISS{i}" for i in range(2, 24))
 
 
 def valider_webhook(valeur: str, origine: str) -> str:
@@ -61,6 +62,11 @@ def valider_webhook(valeur: str, origine: str) -> str:
 def lire_webhooks(salon: str | None) -> list[str]:
     """Lit le routage multi-salons, avec repli sur l'ancien secret unique."""
     multi = os.environ.get(SECRET_MULTI_SALONS, "").strip()
+    if salon == "all" and not multi:
+        valeurs = [os.environ[n].strip() for n in SECRETS_SERIE if os.environ.get(n, "").strip()]
+        if not valeurs:
+            sys.exit("✘ Aucun secret RATISS à RATISS23 n'est configuré.")
+        return [valider_webhook(v, "RATISS…") for v in valeurs]
     if salon and multi:
         try:
             routes = json.loads(multi)
