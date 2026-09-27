@@ -16,6 +16,7 @@ Quatre usages :
   python3 agent.py --test          # message de connexion
   python3 agent.py --titre "…" --details "…" --statut OK --lien "…"
   python3 agent.py --salon general --titre "…" # choisit le webhook du salon
+  python3 agent.py --purger        # supprime les messages postés par l'agent
   python3 agent.py … --dry-run     # n'envoie rien, affiche le JSON
 
 Codes de sortie : 0 = message envoyé · 1 = problème (secret, réseau, envoi)
@@ -31,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -157,6 +159,75 @@ def envoyer_a_tous(webhooks: list[str], charge: dict, dry_run: bool = False) -> 
     return 0 if all(code == 0 for code in codes) else 1
 
 
+# ─────────────────────────── 2bis. la purge ────────────────────────────
+
+GARDE_FOU_PURGE = 10   # maximum de messages supprimés par salon et par run
+
+
+def purger() -> int:
+    """Supprime les messages postés par l'agent, salon par salon.
+
+    Un webhook ne peut supprimer que SES propres messages : les messages
+    écrits par le chef ne sont jamais touchés. Endpoint utilisé :
+    GET/DELETE /messages/@original — le dernier message du webhook.
+    Aucune URL, aucune valeur de secret n'est jamais affichée.
+    """
+    total, actifs, problemes = 0, 0, 0
+    for nom in SECRETS_SERIE:
+        valeur = os.environ.get(nom, "").strip()
+        if not valeur:
+            print(f"  · {nom} : secret absent, sauté")
+            continue
+        if not valeur.startswith(PREFIXES_WEBHOOK):
+            print(f"  ⚠ {nom} : secret non reconnu comme webhook Discord, sauté")
+            problemes += 1
+            continue
+        actifs += 1
+        supprimes = 0
+        for _ in range(GARDE_FOU_PURGE):
+            # 1) lire le dernier message du webhook (@original)
+            try:
+                req = urllib.request.Request(
+                    valeur + "/messages/@original",
+                    headers={"User-Agent": "RATISS-LABS-agent/1.0"}, method="GET")
+                with urllib.request.urlopen(req, timeout=25) as r:
+                    identifiant = json.loads(r.read()).get("id")
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    break   # plus rien à supprimer ici — salon propre
+                print(f"  ⚠ {nom} : lecture du dernier message → HTTP {e.code}")
+                problemes += 1
+                break
+            except Exception as e:
+                print(f"  ⚠ {nom} : erreur réseau {type(e).__name__}")
+                problemes += 1
+                break
+            # 2) le supprimer
+            try:
+                req = urllib.request.Request(
+                    valeur + f"/messages/{identifiant}",
+                    headers={"User-Agent": "RATISS-LABS-agent/1.0"}, method="DELETE")
+                with urllib.request.urlopen(req, timeout=25) as r:
+                    if r.status == 204:
+                        supprimes += 1
+                        total += 1
+            except urllib.error.HTTPError as e:
+                print(f"  ⚠ {nom} : suppression du message {identifiant} → HTTP {e.code}")
+                problemes += 1
+                break
+            except Exception as e:
+                print(f"  ⚠ {nom} : erreur réseau {type(e).__name__}")
+                problemes += 1
+                break
+        print(f"  · {nom} : {supprimes} message(s) supprimé(s)")
+        time.sleep(0.3)
+    verdict = f"═══ Purge : {total} message(s) supprimé(s) sur {actifs} salon(s) actif(s)"
+    if problemes:
+        verdict += f" · {problemes} problème(s)"
+    print(verdict + " ═══")
+    return 0 if problemes == 0 else 1
+
+
 # ───────────────────────── 3. le rapport (le vrai travail) ─────────────────────────
 
 def verifier_manifeste(racine: pathlib.Path) -> dict:
@@ -228,8 +299,13 @@ def main() -> int:
     p.add_argument("--statut", default=None, help="OK | ECHEC | INFO")
     p.add_argument("--lien", default=None)
     p.add_argument("--salon", default=None, help="clé logique du salon dans DISCORD_WEBHOOKS_JSON")
+    p.add_argument("--purger", action="store_true",
+                   help="supprime les messages postés par l'agent (jamais ceux du chef)")
     p.add_argument("--dry-run", action="store_true", help="n'envoie rien")
     a = p.parse_args()
+
+    if a.purger:
+        return purger()   # la purge balaie tous les secrets configurés
 
     webhooks = (
         ["https://discord.com/api/webhooks/0/0"]

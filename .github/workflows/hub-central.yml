@@ -32,6 +32,11 @@ on:
         required: false
         default: false
         type: boolean
+      purger:
+        description: "Supprimer les messages postés par l'agent (purge, aucun envoi)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -72,6 +77,7 @@ jobs:
       DETAILS: ${{ inputs.details }}
       LIEN: ${{ inputs.lien }}
       TEST_SEUL: ${{ inputs.test_seul }}
+      PURGER: ${{ inputs.purger }}
     steps:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
@@ -111,6 +117,11 @@ jobs:
                   sys.exit(1)
           print("Configuration valide pour : " + ("tous les salons" if salon == "all" else salon))
           PY
+
+      - name: Purger les messages de l'agent
+        if: env.PURGER == 'true'
+        shell: bash
+        run: python3 agent.py --purger
 
       - name: Test de connexion
         if: env.TEST_SEUL == 'true'
