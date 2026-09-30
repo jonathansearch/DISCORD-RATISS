@@ -4,3 +4,5 @@ __pycache__/
 .ratiss-webhook
 .env
 *.token
+*.egg-info/
+.pytest_cache/
